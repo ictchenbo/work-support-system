@@ -1,7 +1,7 @@
 {
-  "name": "weekly-report-spa",
+  "name": "work-support-system",
   "version": "1.0.0",
-  "description": "敏捷周报管理系统",
+  "description": "工作支持系统",
   "main": "index.js",
   "scripts": {
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
@@ -11,13 +11,13 @@
     "build": "cd frontend && npm run build"
   },
   "keywords": [
-    "weekly",
+    "support",
     "report",
     "vue",
     "nodejs",
     "mongodb"
   ],
-  "author": "",
+  "author": "chenbo01@ict.ac.cn",
   "license": "MIT",
   "devDependencies": {
     "concurrently": "^8.2.2"
