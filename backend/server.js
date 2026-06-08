@@ -11,7 +11,7 @@ app.use(cors());
 app.use(express.json());
 
 // 环境变量
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/weekly_report';
 
 // 连接MongoDB

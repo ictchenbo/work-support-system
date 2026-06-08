@@ -39,6 +39,18 @@ export async function updateReport(id, content) {
   return response.data
 }
 
+// 保存周报内容批注
+export async function saveReportItemAnnotation(reportId, itemId, data) {
+  const response = await api.put(`/reports/${reportId}/items/${itemId}/annotations`, data)
+  return response.data
+}
+
+// 删除周报内容批注
+export async function deleteReportItemAnnotation(reportId, itemId, author) {
+  const response = await api.delete(`/reports/${reportId}/items/${itemId}/annotations/${encodeURIComponent(author)}`)
+  return response.data
+}
+
 // 导出Word
 export function exportWeekUrl(week, group = null) {
   let url = `/api/reports/export/${week}`

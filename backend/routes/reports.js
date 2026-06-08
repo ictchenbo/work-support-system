@@ -1,7 +1,52 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const WeeklyReport = require('../models/WeeklyReport');
+const ReportAnnotation = require('../models/ReportAnnotation');
 const { Document, Paragraph, TextRun, HeadingLevel, Packer } = require('docx');
+
+const normalizeContentItems = (content = [], existingContent = []) => {
+  return content.map((item, index) => ({
+    ...item,
+    itemId: item.itemId || existingContent[index]?.itemId || new mongoose.Types.ObjectId().toString()
+  }));
+};
+
+const ensureReportItemIds = async (report) => {
+  const normalized = normalizeContentItems(report.content || []);
+  const changed = normalized.some((item, index) => item.itemId !== report.content[index]?.itemId);
+
+  if (changed) {
+    report.content = normalized;
+    report.updated_at = new Date();
+    await report.save();
+  }
+
+  return report;
+};
+
+const attachAnnotations = async (reports) => {
+  const reportIds = reports.map(report => report._id);
+  const annotations = await ReportAnnotation.find({ reportId: { $in: reportIds } }).sort({ updated_at: -1 });
+  const annotationMap = new Map();
+
+  annotations.forEach(annotation => {
+    const key = `${annotation.reportId.toString()}:${annotation.itemId}`;
+    if (!annotationMap.has(key)) {
+      annotationMap.set(key, []);
+    }
+    annotationMap.get(key).push(annotation);
+  });
+
+  return reports.map(report => {
+    const data = report.toObject();
+    data.content = (data.content || []).map(item => ({
+      ...item,
+      annotations: annotationMap.get(`${data._id.toString()}:${item.itemId}`) || []
+    }));
+    return data;
+  });
+};
 
 // 导出本周为Word文档 - 必须放在参数路由之前！
 router.get('/export/:week', async (req, res) => {
@@ -153,7 +198,71 @@ router.get('/:week', async (req, res) => {
       query.group = group;
     }
     const reports = await WeeklyReport.find(query).sort({ name: 1 });
-    res.json({ success: true, data: reports });
+    for (const report of reports) {
+      await ensureReportItemIds(report);
+    }
+    const data = await attachAnnotations(reports);
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 保存或清空某条周报内容的批注
+router.put('/:reportId/items/:itemId/annotations', async (req, res) => {
+  try {
+    const { reportId, itemId } = req.params;
+    const author = (req.body.author || '').trim();
+    const text = (req.body.text || '').trim();
+
+    if (!author) {
+      return res.status(400).json({ success: false, error: '请输入批注人' });
+    }
+
+    const report = await WeeklyReport.findById(reportId);
+    if (!report) {
+      return res.status(404).json({ success: false, error: '周报不存在' });
+    }
+
+    await ensureReportItemIds(report);
+    const itemExists = (report.content || []).some(item => item.itemId === itemId);
+    if (!itemExists) {
+      return res.status(404).json({ success: false, error: '周报内容不存在' });
+    }
+
+    if (!text) {
+      await ReportAnnotation.deleteOne({ reportId, itemId, author });
+      return res.json({ success: true, data: null, message: '批注已清空' });
+    }
+
+    const now = new Date();
+    const annotation = await ReportAnnotation.findOneAndUpdate(
+      { reportId, itemId, author },
+      {
+        $set: { text, updated_at: now },
+        $setOnInsert: { created_at: now }
+      },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+
+    res.json({ success: true, data: annotation, message: '批注保存成功' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 删除某条周报内容的指定批注
+router.delete('/:reportId/items/:itemId/annotations/:author', async (req, res) => {
+  try {
+    const { reportId, itemId } = req.params;
+    const author = decodeURIComponent(req.params.author || '').trim();
+
+    if (!author) {
+      return res.status(400).json({ success: false, error: '缺少批注人' });
+    }
+
+    await ReportAnnotation.deleteOne({ reportId, itemId, author });
+    res.json({ success: true, data: null, message: '批注已删除' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -167,6 +276,7 @@ router.get('/:week/:name', async (req, res) => {
     if (!report) {
       return res.json({ success: true, data: null });
     }
+    await ensureReportItemIds(report);
     res.json({ success: true, data: report });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -187,7 +297,7 @@ router.post('/', async (req, res) => {
 
     if (existing) {
       // 更新
-      existing.content = content;
+      existing.content = normalizeContentItems(content, existing.content || []);
       if (group !== undefined) {
         existing.group = group;
       }
@@ -203,7 +313,7 @@ router.post('/', async (req, res) => {
         week,
         name,
         group: group || '',
-        content,
+        content: normalizeContentItems(content),
         notes: notes || ''
       });
       await report.save();
@@ -228,7 +338,7 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ success: false, error: '周报不存在' });
     }
 
-    report.content = content;
+    report.content = normalizeContentItems(content, report.content || []);
     if (notes !== undefined) {
       report.notes = notes;
     }

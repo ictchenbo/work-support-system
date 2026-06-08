@@ -138,10 +138,17 @@ export default {
       group: '',
       notes: '',
       week: getCurrentWeek(),
-      content: [
-        { project: '', task: '', progress: '' }
-      ]
+      content: []
     })
+
+    const createItemId = () => {
+      if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID()
+      return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+    }
+
+    const createEmptyItem = () => ({ itemId: createItemId(), project: '', task: '', progress: '' })
+
+    form.value.content = [createEmptyItem()]
 
     const currentWeek = ref(getCurrentWeek())
     const weekDescription = ref(formatWeekChinese(currentWeek.value))
@@ -175,7 +182,7 @@ export default {
 
     // 添加工作项
     const addItem = () => {
-      form.value.content.push({ project: '', task: '', progress: '' })
+      form.value.content.push(createEmptyItem())
     }
 
     // 删除工作项
@@ -210,6 +217,7 @@ export default {
             if (draft.content && draft.content.length > 0) {
               // 兼容旧格式（只有 task 和 progress）
               form.value.content = draft.content.map(item => ({
+                itemId: item.itemId || createItemId(),
                 project: item.project || '',
                 task: item.task || '',
                 progress: item.progress || ''
@@ -250,6 +258,7 @@ export default {
           // 已存在，可以编辑
           // 兼容旧格式
           form.value.content = result.data.content.map(item => ({
+            itemId: item.itemId || createItemId(),
             project: item.project || '',
             task: item.task || '',
             progress: item.progress || ''
@@ -316,6 +325,7 @@ export default {
           group: form.value.group,
           notes: form.value.notes.trim(),
           content: form.value.content.map(item => ({
+            itemId: item.itemId || createItemId(),
             project: item.project.trim(),
             task: item.task.trim(),
             progress: item.progress.trim()
